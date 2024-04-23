@@ -1,0 +1,226 @@
+package battleship
+
+const val SIZE = 10
+const val EMPTY = '~'
+const val DAMAGE = 'X'
+const val SHIP = 'O'
+const val MISS = 'M'
+
+
+fun main() {
+    repeat(2) {
+        placeShips()
+        Field.isFirst = !Field.isFirst
+    }
+    makeShot()
+}
+
+//расстановка кораблей
+fun placeShips() {
+    println("\nPlayer ${if (Field.isFirst) 1 else 2}, place your ships to the game field")
+    printField(if (Field.isFirst) Field.field1 else Field.field2)
+    for (ship in if (Field.isFirst) Ships.ships1 else Ships.ships2) {
+        while (true) {
+            val input = "\nEnter the coordinates of the ${ship.name} (${ship.length} cells):".input()
+            if (!input.isCoordinates()) {
+                println("Error! You entered the wrong coordinates! Try again:")
+                continue
+            }
+            val coordinates = input.split(" ").map { it.toCoordinates() }.sortedBy { it.second }
+            if (checkLocation(coordinates[0], coordinates[1], ship.length)) {
+                val shipCells = coordinates[0].convertCoordinatesToList(coordinates[1])
+                ship.coordinates = shipCells
+                setAreaAroundShip(coordinates[0], coordinates[1])
+                printField(if (Field.isFirst) Field.field1 else Field.field2)
+                break
+            } else continue
+        }
+    }
+
+    println("\nPress Enter and pass the move to another player\n...\n")
+}
+
+//проверка, соответствует ли размещение корабля на поле условиям
+fun checkLocation(startCell: Pair<Int, Int>, endCell: Pair<Int, Int>, shipLength: Int): Boolean {
+    if (endCell.first != startCell.first && endCell.second != startCell.second) {
+        println("Error! Wrong ship location! Try again:")
+        return false
+    }
+    val shipCells = startCell.convertCoordinatesToList(endCell)
+    if (shipCells.size != shipLength) {
+        println("Error! Wrong ship length! Try again:")
+        return false
+    }
+    for (cell in shipCells) {
+        if ((if (Field.isFirst) Field.areaAroundShips1 else Field.areaAroundShips2).contains(cell)) {
+            println("Error! You placed it too close to another one. Try again:")
+            return false
+        }
+    }
+    return true
+}
+
+//площадь вокруг корабля включается в Set, чтобы туда нельзя было ставить следующий корабль
+fun setAreaAroundShip(startCell: Pair<Int, Int>, endCell: Pair<Int, Int>) {
+    val startY = if (startCell.first == 0) 0 else startCell.first - 1
+    val startX = if (startCell.second == 0) 0 else startCell.second - 1
+    val endY = if (endCell.first == SIZE - 1) SIZE - 1 else endCell.first + 1
+    val endX = if (endCell.second == SIZE - 1) SIZE - 1 else endCell.second + 1
+    for (y in startY..endY) {
+        for (x in startX..endX) {
+            (if (Field.isFirst) Field.areaAroundShips1 else Field.areaAroundShips2).add(Pair(y, x))
+        }
+    }
+}
+
+//выстрел
+fun makeShot() {
+    while (true) {
+        printField(if (Field.isFirst) Field.fogField2 else Field.fogField1)
+        repeat(SIZE * 2 + 1) { print("-") }
+        println()
+        printField(if (Field.isFirst) Field.field1 else Field.field2)
+        println("\nPlayer ${if (Field.isFirst) 1 else 2}, it's your turn:")
+        val shot = readln()
+        if (!shot.isCoordinate()) {
+            println("Error! You entered the wrong coordinates! Try again:")
+            continue
+        }
+        if (checkShot(shot.toCoordinates())) break else Field.isFirst = !Field.isFirst
+    }
+}
+
+//проверка, попал выстрел по кораблю или нет. При попадании изменение статуса корабля. Изменения на игровом поле.
+fun checkShot(shot: Pair<Int, Int>): Boolean {
+    for (ship in if (Field.isFirst) Ships.ships2 else Ships.ships1) {
+        if (ship.coordinates.contains(shot)) {
+            (if (Field.isFirst) Field.fogField2 else Field.fogField1)[shot.first][shot.second] = DAMAGE
+            (if (Field.isFirst) Field.field2 else Field.field1)[shot.first][shot.second] = DAMAGE
+            if (ship.healthCells.size != 0) ship.healthCells.remove(shot)
+            ship.healthCells = ship.healthCells
+            when {
+                !ship.isDestroyed -> {
+                    println("\nYou hit a ship!\nPress Enter and pass the move to another player\n...")
+                    return false
+                }
+
+                (if (Field.isFirst) Ships.ships2 else Ships.ships1).all { it.isDestroyed } -> {
+                    println("\nYou sank the last ship. You won. Congratulations!")
+                    return true
+                }
+
+                else -> {
+                    println("\nYou sank a ship! Specify a new target:\nPress Enter and pass the move to another player\n...")
+                    return false
+                }
+            }
+        }
+    }
+    (if (Field.isFirst) Field.fogField2 else Field.fogField1)[shot.first][shot.second] = MISS
+    (if (Field.isFirst) Field.field2 else Field.field1)[shot.first][shot.second] = MISS
+    println("\nYou missed!\nPress Enter and pass the move to another player\n...")
+    return false
+}
+
+fun printField(arr: Array<Array<Char>>) {
+    print(buildString {
+        append(' ')
+        repeat(SIZE) { append(" ${it + 1}") }
+        append("\n")
+        for (i in 0 until SIZE) {
+            append("${'A' + i}")
+            for (j in 0 until SIZE) {
+                append(" ${arr[i][j]}")
+            }
+            append("\n")
+        }
+    })
+}
+
+//инициализация переменной строкой, которая вводится пользователем после текстового запроса от системы
+fun String.input() = println(this).run { readln() }
+
+//перевод буквенно-числовых координат (А1) в координаты двумерного массива игрового поля (ряд, столбец)
+fun String.toCoordinates(): Pair<Int, Int> = Pair(this[0] - 'A', this.substring(1).toInt() - 1)
+
+//соответствуют вводимые координаты требуемому диапазону и правильному составу(БУКВА_ЧИСЛО)
+fun String.isCoordinate(): Boolean = this.matches("[A-J][1-9]|[A-J]10".toRegex())
+
+fun String.isCoordinates(): Boolean = this.matches("([A-J][1-9]|[A-J]10) ([A-J][1-9]|[A-J]10)".toRegex())
+
+//по начальным и конечным координатам выдается набор ячеек между ними
+fun Pair<Int, Int>.convertCoordinatesToList(end: Pair<Int, Int>): List<Pair<Int, Int>> =
+    (if (end.first - this.first == 0) (minOf(this.second, end.second)..maxOf(
+        this.second,
+        end.second
+    )).map { Pair(this.first, it) }
+    else (minOf(this.first, end.first)..maxOf(this.first, end.first)).map { Pair(it, this.second) })
+
+object Field {
+    val field1 = Array(SIZE) { Array(SIZE) { EMPTY } } //сетка игрового поля
+    val field2 = Array(SIZE) { Array(SIZE) { EMPTY } }
+    val areaAroundShips1 = mutableSetOf<Pair<Int, Int>>() //площадь на расстоянии 1 клетки от каждого корабля
+    val areaAroundShips2 = mutableSetOf<Pair<Int, Int>>()
+    val fogField1 = Array(SIZE) { Array(SIZE) { EMPTY } }
+    val fogField2 = Array(SIZE) { Array(SIZE) { EMPTY } }
+    var isFirst = true
+}
+
+object Ships {
+    private val aircraftCarrier1 = AircraftCarrier()
+    private val battleship1 = Battleship()
+    private val submarine1 = Submarine()
+    private val cruiser1 = Cruiser()
+    private val destroyer1 = Destroyer()
+    val ships1 = arrayOf(aircraftCarrier1, battleship1, submarine1, cruiser1, destroyer1)
+    private val aircraftCarrier2 = AircraftCarrier()
+    private val battleship2 = Battleship()
+    private val submarine2 = Submarine()
+    private val cruiser2 = Cruiser()
+    private val destroyer2 = Destroyer()
+    val ships2 = arrayOf(aircraftCarrier2, battleship2, submarine2, cruiser2, destroyer2)
+}
+
+abstract class Ship() {
+    abstract val name: String
+    open var isDestroyed = false
+    abstract val length: Int
+    open var coordinates = listOf<Pair<Int, Int>>()
+        set(value) {
+            field = value
+            healthCells = value.toMutableList()
+            value.forEach {
+                (if (Field.isFirst) Field.field1 else Field.field2)[it.first][it.second] = SHIP
+            } //на карте отмечается, где находится корабль
+        }
+    open var healthCells = mutableListOf<Pair<Int, Int>>()
+        set(value) {
+            field = value
+            if (value.size == 0) isDestroyed = true
+        }
+}
+
+class AircraftCarrier : Ship() {
+    override val name = "Aircraft Carrier"
+    override val length = 5
+}
+
+class Battleship() : Ship() {
+    override val name = "Battleship"
+    override val length = 4
+}
+
+class Submarine() : Ship() {
+    override val name = "Submarine"
+    override val length = 3
+}
+
+class Cruiser() : Ship() {
+    override val name = "Cruiser"
+    override val length = 3
+}
+
+class Destroyer() : Ship() {
+    override val name = "Destroyer"
+    override val length = 2
+}
